@@ -46,7 +46,8 @@ class UserParserJob(Job):
                                                  phone=part.phone,
                                                  fullname=(part.first_name if part.first_name else "") + (
                                                      " " + part.last_name if part.last_name else ""),
-                                                 userid=part.id))
+                                                 userid=part.id,
+                                                 user_entity=part))
                     self.result = Result.SUCCESS
                 yield self.__copy__()
             except Exception as e:

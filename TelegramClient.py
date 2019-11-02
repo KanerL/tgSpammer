@@ -11,16 +11,24 @@ from jobs.Job import Job, Result
 class STelegramClient:
     name = None
 
-    def __init__(self, name: str, resultQu: Queue, taskQu: Queue, users: list):
+    def __init__(self, name: str,phone :str, resultQu: Queue, taskQu: Queue, users: list):
         self.resultQ = resultQu
         self.taskQ = taskQu
         self.name = name
         self.client: telethon.TelegramClient
         self.client = None
         self.users = users
+        self.phone = phone
 
     async def start_client(self):
-        self.client = await TelegramClient(self.name, api_id, api_hash).start()
+        self.client = TelegramClient(self.name, api_id, api_hash)
+        await self.client.connect()
+        if not await self.client.is_user_authorized():
+            phone = "+" + self.phone
+            await self.client.sign_in(phone)  # send code
+            code = input('enter code: ')
+            await self.client.sign_in(phone, code)
+        await self.client.start()
         self.client: telethon.TelegramClient
         await self.resultQ.put(
             (Result.SUCCESS, f"TGClient {self.name} started succesfully", await self.client.get_me()))

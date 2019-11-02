@@ -1,16 +1,12 @@
-import re
-import threading
-
-from telethon import TelegramClient, events
-import utils
 import asyncio
+import threading
 from asyncio import Queue
-from queue import Queue as Que
+
+import utils
 # Use your own values here
 from TelegramClient import STelegramClient
 from config import clients_users
 from jobs import Job
-from jobs.DialogsParserJob import DialogsParserJob
 from jobs.UserParserJob import UserParserJob
 
 
@@ -25,7 +21,7 @@ from jobs.UserParserJob import UserParserJob
 #         qu.put(channels[i][1])
 #         parsingJob = UserParserJob(client,qu)
 #         await parsingJob.start()
-def worker(clients, resultq, loop,users):
+def worker(clients, resultq, loop, users):
     asyncio.set_event_loop(loop)
     menu = WorkerMenu(clients, resultq)
     while True:
@@ -34,6 +30,10 @@ def worker(clients, resultq, loop,users):
         if i == 4:
             print('Exiting...')
             break
+
+
+def run_cor(cor):
+    return asyncio.run_coroutine_threadsafe(cor, asyncio.get_event_loop()).result()
 
 
 class WorkerMenu():
@@ -53,16 +53,13 @@ class WorkerMenu():
         print(asyncio.get_event_loop())
         self.task = UserParserJob(Queue())
 
-    def run_cor(self, cor):
-        return asyncio.run_coroutine_threadsafe(cor, asyncio.get_event_loop()).result()
-
     def add_new_item_to_task(self, self_channel_mode=True):
         if self_channel_mode:
             for i, item in enumerate(self.clients):
                 print(i, item)
             i = int(input("choose client"))
             client = self.clients[i].client
-            channels = self.run_cor(utils.get_all_users(client))
+            channels = run_cor(utils.get_all_users(client))
             for item, i in enumerate(channels):
                 print(item, i)
             i = input('choose items:')
@@ -72,35 +69,42 @@ class WorkerMenu():
             channels = i.split(',')
         for channel in channels:
             print(channel)
-            self.run_cor(self.task.taskQu.put(channel))
+            run_cor(self.task.taskQu.put(channel))
 
     # TODO выбрать форму заданий и распределения заданий между акками
     def submit_task(self):
         for client in self.clients:
-            self.run_cor(client.taskQ.put(self.task))
+            run_cor(client.taskQ.put(self.task))
 
     def done_tasking(self):
+        run_cor(self.resultq.put(None))
         for client in self.clients:
-            self.run_cor(client.taskQ.put(None))
+            run_cor(client.taskQ.put(None))
 
 
-async def init_clients(n):
+async def init_clients(clients_phones):
     users = []
     q = Queue()
     resq = Queue()
     clients = []
     start_tasks = []
-    for _ in range(n):
-        client = STelegramClient(f'tg{_}', resq, q,users)
+    print(clients_phones)
+    for _ in range(len(clients_phones)):
+        client = STelegramClient(f'tg{_}',clients_phones[_], resq, q, users)
         clients.append(client)
         start_tasks.append(asyncio.create_task(client.start_client()))
-    for _ in range(n):
+    for _ in range(len(clients_phones)):
         await start_tasks[_]
-    return q, resq, clients
+    return q, resq, clients, users
+
+
+async def proccess_results(result_q: Queue):
+    while (result := await result_q.get()) is not None:
+        print(result)
 
 
 async def main():
-    q, resultQu, clients,users = await init_clients(2)
+    q, resultQu, clients, users = await init_clients([380675111025,380666913447])
     _, _, user1 = await resultQu.get()
     _, _, user2 = await resultQu.get()
     print(user1)
@@ -109,16 +113,17 @@ async def main():
     clients_users.append(user2.id)
     print(clients_users)
     print(1)
+    task1 = asyncio.create_task(proccess_results(resultQu))
     task2 = asyncio.create_task(clients[0].run_client())
     task3 = asyncio.create_task(clients[1].run_client())
-    thread_menu = threading.Thread(target=worker, args=[clients, resultQu, asyncio.get_event_loop()],
+    thread_menu = threading.Thread(target=worker, args=[clients, resultQu, asyncio.get_event_loop(), users],
                                    daemon=True)
     thread_menu.start()
     await task2
     await task3
+    await task1
     thread_menu.join()
     print('MainThread')
-
 
 
 if __name__ == '__main__':
